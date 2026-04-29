@@ -75,10 +75,27 @@ linux:
   target:
     - AppImage
     - deb
+    - pacman
   maintainer: electronjs.org
   category: Utility
 appImage:
   artifactName: ${name}-${version}-${os}-${arch}.${ext}
+pacman:
+  artifactName: ${name}-${version}-${os}-${arch}.${ext}
+  depends:
+    - c-ares
+    - ffmpeg
+    - gtk3
+    - libevent
+    - libvpx
+    - libxslt
+    - libxss
+    - minizip
+    - nss
+    - re2
+    - snappy
+    - libnotify
+    - libappindicator
 npmRebuild: false
 
 afterPack: ./build/afterPack.js

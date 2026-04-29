@@ -24,8 +24,10 @@ import clipboardManager from './clipboardManager'
 import { WINDOW_DEFAULT_HEIGHT, WINDOW_INITIAL_HEIGHT, WINDOW_WIDTH } from '../common/constants'
 import detachedWindowManager from '../core/detachedWindowManager'
 import superPanelManager from '../core/superPanelManager'
+import { getSafeDisplayAtCursor } from '../utils/screenUtils'
 import { applyWindowMaterial, getDefaultWindowMaterial } from '../utils/windowUtils'
 import pluginManager from './pluginManager'
+import { getDefaultLauncherShortcut, normalizeShortcutForPlatform } from '@shared/shortcut'
 
 // 窗口材质类型
 type WindowMaterial = 'mica' | 'acrylic' | 'none'
@@ -60,7 +62,7 @@ class WindowManager {
   private mainWindow: BrowserWindow | null = null
   private tray: Tray | null = null
   private trayMenu: Menu | null = null // 托盘菜单
-  private currentShortcut = 'Option+Z' // 当前注册的快捷键
+  private currentShortcut = getDefaultLauncherShortcut(process.platform) // 当前注册的快捷键
   private isDoubleTapMode = false // 当前呼出快捷键是否为双击修饰键模式
   private static readonly MODIFIER_NAMES = ['Command', 'Ctrl', 'Alt', 'Option', 'Shift']
   private isQuitting = false // 是否正在退出应用
@@ -99,6 +101,7 @@ class WindowManager {
   private modalDialogBlurHideReleaseTimer: ReturnType<typeof setTimeout> | null = null
   private modalDialogBlurHideSuppressionDepth: number = 0
   private lastBlurHideTime: number = 0 // blur 导致隐藏窗口的时间戳（用于解决托盘点击竞态）
+  private lastToggleTime: number = 0 // toggleWindow 上次触发时间（防御性防抖，防止 Portal 事件重放/重注册竞态等重复触发）
   private blurHideTimer: ReturnType<typeof setTimeout> | null = null // Linux blur 延迟隐藏定时器
   // Double-tap 唤醒窗口时，Windows 可能紧跟一个短暂 blur；这两个 timer 用于跳过误关闭并补一次焦点。
   private doubleTapFocusTimer: ReturnType<typeof setTimeout> | null = null
@@ -300,8 +303,7 @@ class WindowManager {
     y: number
     id: number
   } {
-    const cursorPoint = screen.getCursorScreenPoint()
-    const display = screen.getDisplayNearestPoint(cursorPoint)
+    const display = getSafeDisplayAtCursor()
     return {
       ...display.workArea,
       id: display.id
@@ -675,18 +677,21 @@ class WindowManager {
    * 注册全局快捷键（支持双击修饰键）
    */
   public registerShortcut(shortcut?: string): boolean {
-    const keyToRegister = shortcut || this.currentShortcut
+    const keyToRegister = normalizeShortcutForPlatform(
+      shortcut || this.currentShortcut,
+      process.platform
+    )
 
     // 保存旧的快捷键信息，用于注册失败时回滚
-    const oldShortcut = this.currentShortcut
+    const oldShortcut = normalizeShortcutForPlatform(this.currentShortcut, process.platform)
     const oldIsDoubleTapMode = this.isDoubleTapMode
 
     // 注销旧的呼出快捷键（仅注销当前快捷键，不影响其他全局快捷键）
     if (this.isDoubleTapMode) {
-      const oldModifier = this.currentShortcut.split('+')[0]
+      const oldModifier = oldShortcut.split('+')[0]
       doubleTapManager.unregister(oldModifier)
     } else {
-      globalShortcut.unregister(this.currentShortcut)
+      globalShortcut.unregister(oldShortcut)
     }
 
     // 双击修饰键模式：通过 doubleTapManager 注册
@@ -702,12 +707,23 @@ class WindowManager {
     }
 
     // 普通快捷键模式：通过 globalShortcut 注册
+    const alreadyRegistered = globalShortcut.isRegistered(keyToRegister)
+    console.log(
+      `[WindowManager] 准备注册快捷键: ${keyToRegister}, 当前是否已注册: ${alreadyRegistered}`
+    )
     const ret = globalShortcut.register(keyToRegister, () => {
+      console.log(`[WindowManager] 全局快捷键 ${keyToRegister} 被触发!`)
       this.toggleWindow()
     })
+    const registeredAfter = globalShortcut.isRegistered(keyToRegister)
+    console.log(
+      `[WindowManager] 快捷键注册结果: ${keyToRegister}, register返回=${ret}, isRegistered=${registeredAfter}`
+    )
 
-    if (!ret) {
-      console.error(`快捷键注册失败: ${keyToRegister} 已被占用，回滚到旧快捷键: ${oldShortcut}`)
+    if (!ret || !registeredAfter) {
+      console.error(
+        `[WindowManager] 快捷键注册失败: ${keyToRegister} (register返回=${ret}, isRegistered=${registeredAfter})，回滚到旧快捷键: ${oldShortcut}`
+      )
       // 注册失败，回滚：重新注册旧的快捷键
       if (oldIsDoubleTapMode) {
         const oldModifier = oldShortcut.split('+')[0]
@@ -723,7 +739,7 @@ class WindowManager {
     } else {
       this.currentShortcut = keyToRegister
       this.isDoubleTapMode = false
-      console.log(`快捷键 ${keyToRegister} 注册成功`)
+      console.log(`[WindowManager] 快捷键 ${keyToRegister} 注册成功`)
     }
 
     return ret
@@ -750,8 +766,19 @@ class WindowManager {
   private toggleWindow(): void {
     if (!this.mainWindow) return
 
+    // 防御性防抖：300ms 内多次触发只执行一次（防止 Portal 事件重放、重注册竞态等重复触发）
+    const now = Date.now()
+    if (now - this.lastToggleTime < 300) {
+      console.log(`[WindowManager] toggleWindow 被调用但处于防重入冷却期，跳过`)
+      return
+    }
+    this.lastToggleTime = now
+
     const isFocused = this.mainWindow.isFocused()
     const isVisible = this.mainWindow.isVisible()
+    console.log(
+      `[WindowManager] toggleWindow 被调用, focused=${isFocused}, visible=${isVisible}, lastBlurHideTime=${this.lastBlurHideTime}`
+    )
 
     // 判断窗口是否聚焦显示
     // 修复：同时检查聚焦和可见状态，避免alert弹窗后判断错误
@@ -805,6 +832,7 @@ class WindowManager {
    */
   private forceActivateWindow(): void {
     if (!this.mainWindow) return
+    console.log('[WindowManager] forceActivateWindow 被调用')
 
     // macOS 使用非激活 panel 保留原应用的前台状态。短暂抑制呼出瞬间的 blur，
     // 但不要激活整个应用，否则会破坏快捷面板不抢占原应用焦点的交互语义。
@@ -936,6 +964,7 @@ class WindowManager {
    */
   public showWindow(): void {
     if (!this.mainWindow) return
+    console.log('[WindowManager] showWindow 被调用')
 
     // 开始恢复焦点流程，防止 focus 事件监听器修改 lastFocusTarget
     this.isRestoringFocus = true
@@ -1616,8 +1645,9 @@ class WindowManager {
    */
   public registerAppShortcut(shortcut: string, target: string): boolean {
     try {
-      this.appShortcuts.set(shortcut, target)
-      console.log(`成功注册应用快捷键: ${shortcut} -> ${target}`)
+      const normalizedShortcut = normalizeShortcutForPlatform(shortcut, process.platform)
+      this.appShortcuts.set(normalizedShortcut, target)
+      console.log(`成功注册应用快捷键: ${normalizedShortcut} -> ${target}`)
       return true
     } catch (error) {
       console.error('[Window] 注册应用快捷键失败:', error)
@@ -1629,8 +1659,9 @@ class WindowManager {
    * 注销应用快捷键
    */
   public unregisterAppShortcut(shortcut: string): void {
-    this.appShortcuts.delete(shortcut)
-    console.log(`成功注销应用快捷键: ${shortcut}`)
+    const normalizedShortcut = normalizeShortcutForPlatform(shortcut, process.platform)
+    this.appShortcuts.delete(normalizedShortcut)
+    console.log(`成功注销应用快捷键: ${normalizedShortcut}`)
   }
 
   /**

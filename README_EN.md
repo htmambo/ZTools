@@ -120,7 +120,7 @@ pnpm build:linux:arm64 # Linux (arm64)
 
 ### Usage
 
-1. After launching the app, use the shortcut `Option+Z` (macOS) or `Alt+Z` (Windows) to open the main interface
+1. After launching the app, use the shortcut `Option+Z` (macOS) or `Alt+Z` (Windows / Linux) to open the main interface
 2. Enter application name or command to search
 3. Use `↑` `↓` `←` `→` to navigate, `Enter` to confirm, `Esc` to exit
 

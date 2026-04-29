@@ -13,6 +13,7 @@ import databaseAPI from '../api/shared/database.js'
 import pluginsAPI from '../api/renderer/plugins.js'
 import windowManager from '../managers/windowManager.js'
 import clipboardManager, { type LastCopiedContent } from '../managers/clipboardManager.js'
+import { getSafeCursorScreenPoint } from '../utils/screenUtils.js'
 import { applyWindowMaterial, getDefaultWindowMaterial } from '../utils/windowUtils.js'
 import providerManager from './provider/providerManager.js'
 import { filterSuperPanelPinnedCommands } from './superPanelPinnedCommands.js'
@@ -262,7 +263,7 @@ class SuperPanelManager {
   private onMouseTrigger(): MouseMonitorResult {
     try {
       // 1. 记录鼠标位置
-      const cursorPoint = screen.getCursorScreenPoint()
+      const cursorPoint = getSafeCursorScreenPoint()
 
       // 1.5. 记录触发前的窗口信息
       // 优先使用 getActiveWindow() 实时获取前台窗口（更准确），回退到缓存的窗口信息

@@ -15,6 +15,7 @@ import {
 } from '@/constants'
 import { Dropdown, HotkeyInput, Slider, useToast } from '@/components'
 import { applyCustomColor, applyPrimaryColor } from '@/utils'
+import { getDefaultLauncherShortcut, getLauncherHotkeyPresets } from '@shared/shortcut'
 
 const { success, error, info, confirm } = useToast()
 
@@ -144,21 +145,12 @@ const terminalOptions = computed(() => {
 
 // 默认快捷键（根据平台区分文案）
 const defaultHotkey = computed(() => {
-  return platform.value === 'win32' ? 'Alt+Z' : 'Option+Z'
+  return getDefaultLauncherShortcut(platform.value)
 })
 
 // 快捷键预设选项（根据平台）
 const hotkeyPresets = computed(() => {
-  if (platform.value === 'win32') {
-    return [
-      { label: 'Alt + Space', value: 'Alt+Space' },
-      { label: 'Ctrl + Space', value: 'Ctrl+Space' }
-    ]
-  }
-  return [
-    { label: 'Command + Space', value: 'Command+Space' },
-    { label: 'Option + Space', value: 'Option+Space' }
-  ]
+  return getLauncherHotkeyPresets(platform.value)
 })
 
 const showHotkeyQuickActions = ref(false)

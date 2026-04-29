@@ -128,6 +128,20 @@ export function getCurrentShortcut(): string {
 }
 
 app.whenReady().then(async () => {
+  // 启动环境诊断（Linux/Wayland 排障关键信息）
+  console.log('[Main] 启动环境诊断:', {
+    platform: process.platform,
+    arch: process.arch,
+    electronVersion: process.versions.electron,
+    chromeVersion: process.versions.chrome,
+    nodeVersion: process.versions.node,
+    xdgSessionType: process.env.XDG_SESSION_TYPE,
+    waylandDisplay: process.env.WAYLAND_DISPLAY,
+    display: process.env.DISPLAY,
+    ozonePlatformHint: process.env.ELECTRON_OZONE_PLATFORM_HINT,
+    argv: process.argv.filter((a) => a.startsWith('--'))
+  })
+
   // macOS 辅助功能权限检查和请求（如果未授权则弹窗提示）
   await ensureMacAccessibilityPermission()
 

@@ -8,6 +8,7 @@ import {
   WindowManager as NativeWindowManager
 } from '../../core/native/index.js'
 import { getCurrentShortcut, updateShortcut } from '../../appMain.js'
+import { getDefaultLauncherShortcut, normalizeShortcutForPlatform } from '@shared/shortcut'
 
 import doubleTapManager from '../../core/doubleTapManager.js'
 import proxyManager from '../../managers/proxyManager.js'
@@ -41,6 +42,14 @@ interface ShortcutLaunchContext {
  * 设置管理API - 主程序专用
  * 包含主题、快捷键、开机启动等设置
  */
+type StoredShortcutEntry = {
+  enabled?: boolean
+  shortcut?: string
+  target?: string
+  autoCopy?: boolean
+  preScreenshotOptimization?: boolean
+}
+
 export class SettingsAPI {
   private mainWindow: Electron.BrowserWindow | null = null
   private pluginManager: PluginManager | null = null
@@ -235,17 +244,32 @@ export class SettingsAPI {
       windowManager.setTrayIconVisible(data?.showTrayIcon ?? true)
       console.log('[Settings] 启动时应用托盘图标显示设置:', data?.showTrayIcon ?? true)
 
+      // 归一化快捷键（如果数据库中有设置）
+      if (data?.hotkey) {
+        const normalizedHotkey = normalizeShortcutForPlatform(data.hotkey, process.platform)
+        if (normalizedHotkey !== data.hotkey) {
+          data.hotkey = normalizedHotkey
+          databaseAPI.dbPut('settings-general', data)
+          console.log('[Settings] 已归一化主快捷键配置:', normalizedHotkey)
+        }
+      }
+
+      // 应用快捷键设置（始终注册，数据库无值时使用平台默认值）
+      const hotkeyToApply = data?.hotkey || getDefaultLauncherShortcut(process.platform)
+      const success = updateShortcut(hotkeyToApply)
+      console.log(
+        '[Settings] 启动时应用快捷键设置:',
+        hotkeyToApply,
+        success ? '成功' : '失败',
+        data?.hotkey ? '(来自数据库)' : '(默认首次启动)'
+      )
+
       if (data) {
         // 应用透明度设置
         if (data.opacity !== undefined && this.mainWindow) {
           const clampedOpacity = Math.max(0.3, Math.min(1, data.opacity))
           this.mainWindow.setOpacity(clampedOpacity)
           console.log('[Settings] 启动时应用透明度设置:', data.opacity)
-        }
-        // 应用快捷键设置
-        if (data.hotkey) {
-          const success = updateShortcut(data.hotkey)
-          console.log('[Settings] 启动时应用快捷键设置:', data.hotkey, success ? '成功' : '失败')
         }
         // 应用主题设置
         if (data.theme) {
@@ -297,7 +321,10 @@ export class SettingsAPI {
   // 加载并注册全局快捷键
   private async loadAndRegisterGlobalShortcuts(): Promise<void> {
     try {
-      const shortcuts = databaseAPI.dbGet('global-shortcuts')
+      const shortcuts = this.normalizeShortcutList(
+        'global-shortcuts',
+        databaseAPI.dbGet('global-shortcuts') as StoredShortcutEntry[] | null
+      )
       if (shortcuts && Array.isArray(shortcuts)) {
         for (const shortcut of shortcuts) {
           if (shortcut.enabled && shortcut.shortcut && shortcut.target) {
@@ -322,7 +349,10 @@ export class SettingsAPI {
   // 加载并注册应用快捷键
   private async loadAndRegisterAppShortcuts(): Promise<void> {
     try {
-      const shortcuts = databaseAPI.dbGet('app-shortcuts')
+      const shortcuts = this.normalizeShortcutList(
+        'app-shortcuts',
+        databaseAPI.dbGet('app-shortcuts') as StoredShortcutEntry[] | null
+      )
       if (shortcuts && Array.isArray(shortcuts)) {
         for (const shortcut of shortcuts) {
           if (shortcut.enabled && shortcut.shortcut && shortcut.target) {
@@ -363,7 +393,8 @@ export class SettingsAPI {
   // 更新快捷键
   public updateShortcut(shortcut: string): { success: boolean; error?: string } {
     try {
-      const success = updateShortcut(shortcut)
+      const normalizedShortcut = normalizeShortcutForPlatform(shortcut, process.platform)
+      const success = updateShortcut(normalizedShortcut)
       if (success) {
         return { success: true }
       } else {
@@ -395,6 +426,37 @@ export class SettingsAPI {
     return shortcut.split('+')[0]
   }
 
+  private normalizeShortcutList<T extends { shortcut?: string }>(
+    storageKey: 'global-shortcuts' | 'app-shortcuts',
+    shortcuts: T[] | null
+  ): T[] | null {
+    if (!shortcuts || !Array.isArray(shortcuts)) {
+      return shortcuts
+    }
+
+    let changed = false
+    const normalized = shortcuts.map((shortcut) => {
+      if (!shortcut?.shortcut) {
+        return shortcut
+      }
+
+      const normalizedShortcut = normalizeShortcutForPlatform(shortcut.shortcut, process.platform)
+      if (normalizedShortcut === shortcut.shortcut) {
+        return shortcut
+      }
+
+      changed = true
+      return { ...shortcut, shortcut: normalizedShortcut }
+    })
+
+    if (changed) {
+      databaseAPI.dbPut(storageKey, normalized)
+      console.log(`[Settings] 已归一化 ${storageKey} 配置`)
+    }
+
+    return normalized
+  }
+
   /**
    * 注册全局快捷键。
    * 触发时会按需采集当前外部应用中的选中文本，再把上下文交给上层统一处理。
@@ -410,6 +472,9 @@ export class SettingsAPI {
     )
 
     try {
+      // 跨平台归一化（兼容旧版本在 Linux/Windows 上误写的 Option 形式）
+      shortcut = normalizeShortcutForPlatform(shortcut, process.platform)
+
       // 存储快捷键配置
       this.globalShortcutConfigs.set(shortcut, { autoCopy, preScreenshotOptimization })
       this.globalShortcutTargets.set(shortcut, target)
@@ -480,6 +545,7 @@ export class SettingsAPI {
   // 注销全局快捷键
   public unregisterGlobalShortcut(shortcut: string): any {
     try {
+      shortcut = normalizeShortcutForPlatform(shortcut, process.platform)
       this.unregisterGlobalShortcutBackend(shortcut)
       this.releaseGlobalShortcutKeyboardState(shortcut)
       this.globalShortcutConfigs.delete(shortcut)

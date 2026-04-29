@@ -1,6 +1,7 @@
-import { ipcMain, screen } from 'electron'
+import { ipcMain } from 'electron'
 import { WINDOW_INITIAL_HEIGHT, WINDOW_WIDTH } from '../../common/constants.js'
 import windowManager from '../../managers/windowManager.js'
+import { getSafeDisplayAtCursor } from '../../utils/screenUtils'
 
 // 窗口材质类型
 type WindowMaterial = 'mica' | 'acrylic' | 'none'
@@ -92,7 +93,7 @@ export class WindowAPI {
       // 使用固定宽度常量，避免多显示器 DPI 缩放导致 getSize() 返回被缩放的值
       const width = WINDOW_WIDTH
       // 限制高度范围: 最小初始高度, 最大不超过当前屏幕可用高度
-      const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+      const display = getSafeDisplayAtCursor()
       const maxHeight = display.workAreaSize.height
       const newHeight = Math.max(WINDOW_INITIAL_HEIGHT, Math.min(height, maxHeight))
 

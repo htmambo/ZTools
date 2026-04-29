@@ -740,7 +740,16 @@ const useDrag = (): DragHandlers => {
     cancelDrag()
 
     const target = e.target as HTMLElement
-    if (!target.closest('input') && !target.closest('.search-actions')) {
+    // 拖动结束时，如果落点不是交互元素，则自动聚焦输入框
+    const isInteractive =
+      target.closest('input') ||
+      target.closest('button') ||
+      target.closest('a') ||
+      target.closest('select') ||
+      target.closest('textarea') ||
+      target.closest('[contenteditable="true"]') ||
+      target.closest('.search-actions')
+    if (!isInteractive) {
       inputRef.value?.focus()
     }
   }
@@ -754,7 +763,18 @@ const useDrag = (): DragHandlers => {
 
   const onStart = async (e: MouseEvent): Promise<void> => {
     const target = e.target as HTMLElement
-    if (target === inputRef.value || target.closest('.search-actions')) return
+    // 排除所有交互元素及其子元素，避免误触发拖动
+    if (
+      target.closest('input') ||
+      target.closest('button') ||
+      target.closest('a') ||
+      target.closest('select') ||
+      target.closest('textarea') ||
+      target.closest('[contenteditable="true"]') ||
+      target.closest('.search-actions')
+    ) {
+      return
+    }
 
     // 同步注册监听器，防止 mouseup 在 await 期间丢失
     dragReady = true
@@ -1061,7 +1081,7 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 8px;
-  /* -webkit-app-region: drag; 暂时注释掉，测试 mousemove */
+  -webkit-app-region: drag; /* 暂时注释掉，测试 mousemove */
   position: relative;
   overflow: hidden; /* 防止内容溢出 */
   width: 100%; /* 确保宽度不超过父容器 */

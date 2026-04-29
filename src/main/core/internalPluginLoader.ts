@@ -25,9 +25,17 @@ export function loadInternalPlugins(): void {
     try {
       const pluginPath = getInternalPluginPath(pluginName)
 
-      // 开发模式：插件路径直接指向 public 目录
+      // 开发模式：优先使用 dist 目录（构建产物），若不存在则回退到 public 目录
       // 生产模式：插件路径指向插件根目录（打包时已将 dist 构建产物复制到此目录）
-      const effectivePluginPath = isDev ? path.join(pluginPath, 'public') : pluginPath
+      let effectivePluginPath = pluginPath
+      if (isDev) {
+        const distPath = path.join(pluginPath, 'dist')
+        if (fsSync.existsSync(path.join(distPath, 'plugin.json'))) {
+          effectivePluginPath = distPath
+        } else {
+          effectivePluginPath = path.join(pluginPath, 'public')
+        }
+      }
 
       // 读取 plugin.json
       const pluginJsonPath = path.join(effectivePluginPath, 'plugin.json')

@@ -106,6 +106,10 @@ vi.mock('electron', () => ({
     getDisplayNearestPoint: vi.fn(() => ({
       id: 1,
       workArea: { x: 0, y: 0, width: 1440, height: 900 }
+    })),
+    getPrimaryDisplay: vi.fn(() => ({
+      id: 1,
+      workArea: { x: 0, y: 0, width: 1440, height: 900 }
     }))
   },
   Tray: vi.fn(() => ({

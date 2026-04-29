@@ -7,6 +7,12 @@ import {
 
 if (process.platform === 'win32') app.setAppUserModelId('top.z-tools')
 
+// Linux 下启用 Portal 全局快捷键实现，提升 Wayland/XWayland 兼容性；
+// 即使运行在 X11 上，启用 Portal 也不会造成负面影响。必须在 app.ready 之前注入。
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal')
+}
+
 const gotTheLock = app.requestSingleInstanceLock()
 const runtimeCompatibility = checkRuntimeCompatibility({
   platform: process.platform,

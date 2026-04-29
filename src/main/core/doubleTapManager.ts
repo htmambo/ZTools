@@ -293,6 +293,7 @@ class DoubleTapManager {
   }
 
   private fireHandlers(modifier: string): void {
+    console.log(`[DoubleTapManager] 双击修饰键触发: ${modifier}, handlers=${this.handlers.length}`)
     for (const handler of this.handlers) {
       if (handler.modifier === modifier) {
         // 避免在 uiohook 的 keyup 调用栈里直接 show/focus 窗口，降低 Windows 焦点竞争概率。

@@ -55,6 +55,11 @@ class GlobalInputManager {
     } catch (error) {
       this.consumers.delete(consumer)
       console.error('[GlobalInput] 启动全局输入监听失败:', error)
+      if (process.platform === 'linux') {
+        console.error(
+          '[GlobalInput] 提示: Linux 下可能需要将用户加入 input 组 (sudo usermod -aG input $USER) 或以 root 运行'
+        )
+      }
       return false
     }
   }

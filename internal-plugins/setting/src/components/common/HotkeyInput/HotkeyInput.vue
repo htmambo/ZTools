@@ -7,6 +7,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from 'vue'
 import { useToast } from '@/components/common/Toast'
+import { getAltModifierName } from '@shared/shortcut'
 
 interface Props {
   modelValue: string
@@ -115,7 +116,7 @@ function getModifierName(code: string): string {
       return 'Ctrl'
     case 'AltLeft':
     case 'AltRight':
-      return props.platform === 'win32' ? 'Alt' : 'Option'
+      return getAltModifierName(props.platform)
     case 'ShiftLeft':
     case 'ShiftRight':
       return 'Shift'
@@ -191,7 +192,7 @@ function handleKeyDown(e: KeyboardEvent): void {
   const keys: string[] = []
   if (e.metaKey) keys.push('Command')
   if (e.ctrlKey) keys.push('Ctrl')
-  if (e.altKey) keys.push(props.platform === 'win32' ? 'Alt' : 'Option')
+  if (e.altKey) keys.push(getAltModifierName(props.platform))
   if (e.shiftKey) keys.push('Shift')
 
   if (!isModifierKey) {
@@ -243,7 +244,7 @@ function handleKeyUp(e: KeyboardEvent): void {
     const activeModifiers: string[] = []
     if (e.metaKey) activeModifiers.push('Command')
     if (e.ctrlKey) activeModifiers.push('Ctrl')
-    if (e.altKey) activeModifiers.push(props.platform === 'win32' ? 'Alt' : 'Option')
+    if (e.altKey) activeModifiers.push(getAltModifierName(props.platform))
     if (e.shiftKey) activeModifiers.push('Shift')
 
     // 只在所有修饰键都释放时才计为一次 tap

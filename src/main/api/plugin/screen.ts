@@ -2,6 +2,7 @@ import { ipcMain, screen, desktopCapturer, BrowserWindow } from 'electron'
 import { screenCapture } from '../../core/screenCapture.js'
 import { ColorPicker } from '../../core/native/index.js'
 import os from 'os'
+import { getSafeCursorScreenPoint } from '../../utils/screenUtils'
 
 /**
  * hex 转 rgb 字符串，如 '#59636E' → 'rgb(89, 99, 110)'
@@ -43,7 +44,7 @@ export class PluginScreenAPI {
 
     // 获取鼠标光标的屏幕坐标
     ipcMain.on('get-cursor-screen-point', (event) => {
-      const point = screen.getCursorScreenPoint()
+      const point = getSafeCursorScreenPoint()
       event.returnValue = point
     })
 

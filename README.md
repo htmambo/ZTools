@@ -120,7 +120,7 @@ pnpm build:linux:arm64 # Linux (按 arm64 架构打包)
 
 ### 使用
 
-1. 启动应用后，使用快捷键 `Option+Z`（macOS）或 `Alt+Z`（Windows）唤起主界面
+1. 启动应用后，使用快捷键 `Option+Z`（macOS）或 `Alt+Z`（Windows / Linux）唤起主界面
 2. 输入应用名称或命令进行搜索
 3. 按 `↑` `↓` `←` `→` 选择，`Enter` 确认，`Esc` 退出
 
