@@ -13,11 +13,8 @@ const BALL_SIZE = 48
 class FloatingBallManager {
   private ballWindow: BrowserWindow | null = null
   private enabled = false
-  private letter = 'Z' // 悬浮球显示的文字，默认 Z
-  private doubleClickCommand = '' // 悬浮球双击目标指令
-  // 拖拽状态：记录拖拽开始时鼠标相对窗口左上角的偏移
-  private dragOffsetX = 0
-  private dragOffsetY = 0
+  private letter = 'Z'
+  private doubleClickCommand = ''
 
   /**
    * 初始化悬浮球管理器
@@ -44,7 +41,17 @@ class FloatingBallManager {
         // 恢复保存的位置
         const savedPos = data?.floatingBallPosition
         if (savedPos && this.ballWindow) {
-          this.ballWindow.setPosition(savedPos.x, savedPos.y, false)
+          // 检测保存的位置是否在屏幕范围内，超出则重置
+          const primaryDisplay = screen.getPrimaryDisplay()
+          const { width, height, x, y } = primaryDisplay.workArea
+          const inBounds =
+            savedPos.x >= x && savedPos.x < x + width && savedPos.y >= y && savedPos.y < y + height
+          if (inBounds) {
+            this.ballWindow.setPosition(savedPos.x, savedPos.y, false)
+            console.log('[FloatingBall] 恢复保存的位置:', savedPos)
+          } else {
+            console.log('[FloatingBall] 保存的位置超出屏幕，重置到默认位置')
+          }
         }
       }
 
@@ -66,30 +73,6 @@ class FloatingBallManager {
     // 悬浮球被双击 → 打开目标指令
     ipcMain.on('floating-ball-double-click', () => {
       this.handleBallDoubleClick()
-    })
-
-    // 拖拽开始 → 记录鼠标相对窗口的偏移
-    ipcMain.on(
-      'floating-ball-drag-start',
-      (_event, data: { mouseScreenX: number; mouseScreenY: number }) => {
-        if (!this.ballWindow || this.ballWindow.isDestroyed()) return
-        const [winX, winY] = this.ballWindow.getPosition()
-        this.dragOffsetX = data.mouseScreenX - winX
-        this.dragOffsetY = data.mouseScreenY - winY
-      }
-    )
-
-    // 拖拽中 → 移动窗口
-    ipcMain.on('floating-ball-dragging', (_event, data: { screenX: number; screenY: number }) => {
-      if (!this.ballWindow || this.ballWindow.isDestroyed()) return
-      const newX = data.screenX - this.dragOffsetX
-      const newY = data.screenY - this.dragOffsetY
-      this.ballWindow.setPosition(newX, newY, false)
-    })
-
-    // 拖拽结束 → 保存位置
-    ipcMain.on('floating-ball-drag-end', () => {
-      this.savePosition()
     })
 
     // 右键菜单
@@ -170,9 +153,8 @@ class FloatingBallManager {
       maximizable: false,
       closable: false,
       skipTaskbar: true,
-      focusable: false,
+      focusable: true,
       hasShadow: false,
-      type: 'panel',
       webPreferences: {
         contextIsolation: false,
         nodeIntegration: true
@@ -183,6 +165,11 @@ class FloatingBallManager {
     this.ballWindow.setAlwaysOnTop(true, 'floating')
     // 所有工作空间都可见
     this.ballWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+
+    // 拖拽结束 → 保存位置（利用 -webkit-app-region: drag 系统原生处理）
+    this.ballWindow.on('moved', () => {
+      this.savePosition()
+    })
 
     // 加载悬浮球页面
     this.ballWindow.loadFile(floatingBallHtml)
