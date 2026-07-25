@@ -108,6 +108,9 @@ class ClipboardManager {
   private lastCopiedSequence = 0
   private lastCopiedSequenceWaiters = new Map<number, Set<(content: LastCopiedContent) => void>>()
 
+  // 上一次保存到历史的 hash，用于连续重复内容去重
+  private lastSavedHash: string | null = null
+
   // 临时取消剪贴板监听的计时器（防止 paste API 写入剪贴板时自我触发）
   private cancelWatchTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -250,7 +253,15 @@ class ClipboardManager {
       }
 
       if (item) {
+        // 连续复制相同内容时跳过记录（保留顺序去重）
+        if (item.hash && item.hash === this.lastSavedHash) {
+          console.log('[Clipboard] 连续重复内容，跳过保存:', item.preview)
+          return
+        }
         await this.saveItem(item as ClipboardItem)
+        if (item.hash) {
+          this.lastSavedHash = item.hash
+        }
         // 通知插件剪贴板变化
         pluginManager?.sendPluginMessage('clipboard-change', item)
       }

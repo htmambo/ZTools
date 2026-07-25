@@ -142,6 +142,7 @@ interface NativeAddon {
     | { type: 'file'; data: string[] }
     | { type: 'image'; data: string }
   >
+  launchCuiShell: (shell: string, workingDirectory: string) => boolean
 }
 
 interface WindowInfo {
@@ -1130,6 +1131,31 @@ export class ColorPicker {
    */
   static get isActive(): boolean {
     return ColorPicker._isActive
+  }
+}
+
+export class CuiProcess {
+  static async launchPowerShell(workingDirectory: string): Promise<boolean> {
+    if (platform !== 'win32' || !addon || typeof addon.launchCuiShell !== 'function') {
+      return false
+    }
+    try {
+      return addon.launchCuiShell('powershell', workingDirectory)
+    } catch (err) {
+      console.error('[CuiProcess] Failed to launch PowerShell:', err)
+      return false
+    }
+  }
+  static async launchCmd(workingDirectory: string): Promise<boolean> {
+    if (platform !== 'win32' || !addon || typeof addon.launchCuiShell !== 'function') {
+      return false
+    }
+    try {
+      return addon.launchCuiShell('cmd', workingDirectory)
+    } catch (err) {
+      console.error('[CuiProcess] Failed to launch Cmd:', err)
+      return false
+    }
   }
 }
 

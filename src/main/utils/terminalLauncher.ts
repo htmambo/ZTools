@@ -1,6 +1,7 @@
 import { spawn, execFile } from 'child_process'
 import { promisify } from 'util'
 import databaseAPI from '../api/shared/database'
+import { CuiProcess } from '../core/native'
 
 const execFileAsync = promisify(execFile)
 
@@ -105,12 +106,8 @@ async function launchDefaultLinux(path: string): Promise<boolean> {
 async function launchDefaultWindows(path: string): Promise<boolean> {
   return (
     (await runCli('wt.exe', ['-d', path])) ||
-    (await runCli('powershell.exe', [
-      '-NoExit',
-      '-Command',
-      `Set-Location -Path ${escapePowerShellPath(path)}`
-    ])) ||
-    (await runCli('cmd.exe', ['/K', `cd /d ${escapeCmdPath(path)}`]))
+    (await CuiProcess.launchPowerShell(path)) ||
+    (await CuiProcess.launchCmd(path))
   )
 }
 
@@ -193,12 +190,7 @@ const WINDOWS_PRESETS: PresetEntry[] = [
     label: 'PowerShell',
     preset: {
       type: 'handler',
-      run: (p) =>
-        runCli('powershell.exe', [
-          '-NoExit',
-          '-Command',
-          `Set-Location -Path ${escapePowerShellPath(p)}`
-        ])
+      run: (p) => CuiProcess.launchPowerShell(p)
     }
   },
   {
@@ -206,7 +198,7 @@ const WINDOWS_PRESETS: PresetEntry[] = [
     label: 'CMD',
     preset: {
       type: 'handler',
-      run: (p) => runCli('cmd.exe', ['/K', `cd /d ${escapeCmdPath(p)}`])
+      run: (p) => CuiProcess.launchCmd(p)
     }
   }
 ]

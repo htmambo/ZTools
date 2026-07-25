@@ -1,4 +1,5 @@
 import { spawn } from 'child_process'
+import path from 'path'
 import { dialog, shell } from 'electron'
 import { UwpManager, WindowsShellLauncher } from '../native'
 import type { ConfirmDialogOptions } from './types'
@@ -31,14 +32,42 @@ async function openWithElectronShell(
   throw new Error(`启动失败: ${error}`)
 }
 
+/**
+ * 计算可执行文件的工作目录（"启动目录"）。
+ *
+ * ShellExecuteEx 若未显式提供 lpDirectory，则子进程会继承 ZTools 主进程的
+ * 当前工作目录。当 ZTools 以开机自启/提权方式启动时，其工作目录通常是
+ * C:\WINDOWS\system32，导致被启动的程序把相对路径（如 Save 数据目录）
+ * 解析到 system32 下而报权限错误（见 issue #603）。
+ *
+ * 为对齐用户在资源管理器中直接双击 exe 的行为，这里返回 exe 所在目录，
+ * 作为其启动工作目录。仅对带有目录分隔符的 .exe 生效；.lnk 由快捷方式
+ * 自身的“起始位置”决定，故不覆盖。
+ */
+export function resolveLaunchWorkingDirectory(appPath: string): string | undefined {
+  if (!appPath.toLowerCase().endsWith('.exe')) {
+    return undefined
+  }
+  if (!appPath.includes('\\') && !appPath.includes('/')) {
+    return undefined
+  }
+  const dir = path.win32.dirname(appPath)
+  if (!dir || dir === '.' || dir === appPath) {
+    return undefined
+  }
+  return dir
+}
+
 async function openApplicationViaExplorer(
   appPath: string,
-  fallback: ElectronShellFallback
+  fallback: ElectronShellFallback,
+  workingDirectory?: string
 ): Promise<void> {
   try {
     const result = await WindowsShellLauncher.launch({
       target: appPath,
-      showCommand: 1
+      showCommand: 1,
+      ...(workingDirectory ? { workingDirectory } : {})
     })
     if (result.success) {
       console.log(`[Launcher] 已通过 Explorer 启动: ${appPath}`)
@@ -136,7 +165,11 @@ export async function launchApp(
 
   // 检查是否是协议链接（如 ms-settings:, steam://, battlenet:// 等）
   // 协议链接失败时必须回退 openExternal，openPath 可能卡住。
-  if (/^[a-zA-Z][a-zA-Z0-9+\-.]*:/.test(appPath) && !appPath.includes('\\')) {
+  if (
+    /^[a-zA-Z][a-zA-Z0-9+\-.]*:/.test(appPath) &&
+    !appPath.includes('\\') &&
+    !path.win32.isAbsolute(appPath)
+  ) {
     try {
       await openApplicationViaExplorer(appPath, 'openExternal')
       return
@@ -209,7 +242,7 @@ export async function launchApp(
   }
 
   // 系统可执行文件（不包含路径分隔符，说明在 PATH 中）
-  if (ext === 'exe' && !appPath.includes('\\')) {
+  if (ext === 'exe' && !appPath.includes('\\') && !appPath.includes('/')) {
     // 对于 PATH 中的可执行文件，使用 shell.openPath（Electron 会自动在 PATH 中查找）
     // 这是最可靠的方式，避免路径解析问题
     const error = await shell.openPath(appPath)
@@ -221,7 +254,7 @@ export async function launchApp(
   }
 
   if (appPath.toLowerCase().endsWith('.exe') || appPath.toLowerCase().endsWith('.lnk')) {
-    await openApplicationViaExplorer(appPath, 'openPath')
+    await openApplicationViaExplorer(appPath, 'openPath', resolveLaunchWorkingDirectory(appPath))
     return
   }
 
