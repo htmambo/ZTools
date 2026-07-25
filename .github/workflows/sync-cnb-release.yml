@@ -22,9 +22,9 @@ on:
 permissions:
   contents: read
 
-# Serialize the same tag so duplicate triggers cannot update one release concurrently.
+# Serialize CNB Release synchronization so an older upload cannot be promoted after a newer one.
 concurrency:
-  group: sync-cnb-release-${{ github.event.release.tag_name || inputs.tag }}
+  group: sync-cnb-release-ZToolsCenter-ZTools
   cancel-in-progress: false
 
 jobs:
@@ -37,6 +37,7 @@ jobs:
       release_id: ${{ steps.prepare.outputs.release_id }}
       has_uploads: ${{ steps.prepare.outputs.has_uploads }}
       upload_matrix: ${{ steps.prepare.outputs.upload_matrix }}
+      should_promote: ${{ steps.prepare.outputs.should_promote }}
     env:
       CNB_SYNC_TOKEN: ${{ secrets.CNB_SYNC_TOKEN }}
       CNB_REPO: ZToolsCenter/ZTools
@@ -75,25 +76,20 @@ jobs:
           BODY=$(jq -r '.body // ""' github-release.json)
           PRERELEASE=$(jq -r '.isPrerelease' github-release.json)
 
-          if [ "$PRERELEASE" = "true" ]; then
-            MAKE_LATEST="false"
-          else
-            MAKE_LATEST="true"
-          fi
-
+          # Keep the Release out of the latest route until every asset has been uploaded and verified.
           CREATE_PAYLOAD=$(jq -n \
             --arg tag_name "$TAG" \
             --arg name "$NAME" \
             --arg body "$BODY" \
             --argjson prerelease "$PRERELEASE" \
-            --arg make_latest "$MAKE_LATEST" \
+            --arg make_latest "false" \
             --arg target_commitish "main" \
             '{tag_name:$tag_name, name:$name, body:$body, prerelease:$prerelease, make_latest:$make_latest, target_commitish:$target_commitish}')
           PATCH_PAYLOAD=$(jq -n \
             --arg name "$NAME" \
             --arg body "$BODY" \
             --argjson prerelease "$PRERELEASE" \
-            --arg make_latest "$MAKE_LATEST" \
+            --arg make_latest "false" \
             '{name:$name, body:$body, prerelease:$prerelease, make_latest:$make_latest}')
 
           # Reuse an existing Release so reruns can skip or overwrite individual assets.
@@ -180,6 +176,7 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
           echo "upload_matrix=$UPLOAD_MATRIX" >> "$GITHUB_OUTPUT"
+          echo "should_promote=$([ "$PRERELEASE" = "false" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           if [ "$UPLOAD_COUNT" -gt 0 ]; then
             echo "has_uploads=true" >> "$GITHUB_OUTPUT"
           else
@@ -197,7 +194,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 3
       matrix: ${{ fromJSON(needs.prepare-release.outputs.upload_matrix) }}
     env:
       CNB_SYNC_TOKEN: ${{ secrets.CNB_SYNC_TOKEN }}
@@ -259,10 +256,12 @@ jobs:
           VERIFY_URL=$(echo "$UPLOAD_BODY" | jq -er '.verify_url')
 
           # Stream the file with visible progress; retrying a PUT safely replaces the same object.
-          curl --fail-with-body --show-error --location --progress-bar \
+          curl --fail-with-body --show-error --location --progress-meter \
             --connect-timeout 30 --max-time 1200 \
             --retry 3 --retry-delay 5 --retry-all-errors \
-            -X PUT --upload-file "asset/$ASSET_NAME" "$UPLOAD_URL"
+            -X PUT --upload-file "asset/$ASSET_NAME" \
+            --write-out "\nUploaded $ASSET_NAME at %{speed_upload} bytes/s on average\n" \
+            "$UPLOAD_URL"
 
           VERIFY_STATUS=$(curl -sS --fail-with-body --connect-timeout 15 --max-time 120 \
             -o /dev/null -w "%{http_code}" "$VERIFY_URL" -X POST \
@@ -295,6 +294,8 @@ jobs:
       CNB_REPO: ZToolsCenter/ZTools
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.prepare-release.outputs.tag }}
+      RELEASE_ID: ${{ needs.prepare-release.outputs.release_id }}
+      SHOULD_PROMOTE: ${{ needs.prepare-release.outputs.should_promote }}
     steps:
       - name: Compare GitHub and CNB assets
         shell: bash
@@ -349,3 +350,21 @@ jobs:
 
           VERIFIED_COUNT=$(jq '[.assets[] | select(.state == "uploaded")] | length' github-release.json)
           echo "Verified $VERIFIED_COUNT assets on https://cnb.cool/${CNB_REPO}/-/releases/tag/${TAG}"
+
+          # Expose a stable Release only after every mirrored asset has passed verification.
+          if [ "$SHOULD_PROMOTE" = "true" ]; then
+            PROMOTE_STATUS=$(curl -sS --fail-with-body --connect-timeout 15 --max-time 120 \
+              -o /dev/null -w "%{http_code}" \
+              "https://api.cnb.cool/${CNB_REPO}/-/releases/${RELEASE_ID}" -X PATCH \
+              -H "Content-Type: application/json" \
+              -H "Accept: application/vnd.cnb.api+json" \
+              -H "Authorization: Bearer $CNB_SYNC_TOKEN" \
+              -d '{"make_latest":"true"}')
+
+            if [ "$PROMOTE_STATUS" != "200" ]; then
+              echo "::error::Failed to promote CNB Release $TAG (HTTP $PROMOTE_STATUS)"
+              exit 1
+            fi
+
+            echo "Promoted CNB Release $TAG as latest"
+          fi
