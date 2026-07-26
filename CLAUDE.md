@@ -5,7 +5,7 @@
 ZTools 是一个跨平台 (macOS/Windows) 应用启动器和插件平台，类似 Alfred/Raycast。
 技术栈：Electron 41 + Vue 3 + TypeScript + Pinia + LMDB + WebContentsView。
 
-核心能力：拼音搜索、插件系统（UI/无界面）、剪贴板管理、超级面板、分离窗口、WebDAV 同步、MCP Server、AI 集成、ZBrowser 浏览器自动化、离线翻译、悬浮球、网页快开。
+核心能力：拼音搜索、插件系统（UI/无界面）、剪贴板管理、超级面板、分离窗口、MCP Server、AI 集成、ZBrowser 浏览器自动化、离线翻译、悬浮球、网页快开。
 
 ## 开发命令
 
@@ -54,7 +54,6 @@ src/main/                          # 主进程
       system.ts                    # 系统功能
       systemSettings.ts            # Windows 系统设置集成
       systemCommands.ts            # 系统内置指令执行（截图、取色等）
-      sync.ts                      # WebDAV 同步 API
       webSearch.ts                 # 网页快开搜索引擎管理
       localShortcuts.ts            # 本地启动项（自定义文件/文件夹/应用快捷方式）
       aiModels.ts                  # AI 模型配置管理（OpenAI 兼容格式）
@@ -83,11 +82,6 @@ src/main/                          # 主进程
       index.ts                     # Database 类主入口
       lmdbInstance.ts              # 单例实例
       syncApi.ts / promiseApi.ts   # 同步/异步 API
-    sync/                          # WebDAV 同步引擎
-      syncEngine.ts                # 同步核心
-      webdavClient.ts              # WebDAV 客户端
-      pluginSyncWatcher.ts         # 插件目录变更监听（标记脏数据）
-      pluginHasher.ts              # 插件目录哈希计算
     zbrowser/                      # 浏览器自动化
       zbrowserManager.ts           # 窗口池管理（每插件独立 Session）
       zbrowserExecutor.ts          # 操作队列执行器

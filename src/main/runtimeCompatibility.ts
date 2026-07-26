@@ -1,5 +1,7 @@
+import { CNB_LATEST_RELEASE_URL } from './updateSource'
+
 export const EXPECTED_ELECTRON_VERSION = __ZTOOLS_TARGET_ELECTRON_VERSION__
-export const FULL_INSTALL_RELEASE_URL = 'https://github.com/ZToolsCenter/ZTools/releases/latest'
+export const FULL_INSTALL_RELEASE_URL = CNB_LATEST_RELEASE_URL
 
 export interface RuntimeCompatibilityInput {
   platform: NodeJS.Platform

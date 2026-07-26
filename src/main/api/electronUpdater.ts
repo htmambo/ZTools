@@ -1,6 +1,12 @@
 import path from 'path'
+import { net } from 'electron'
 import log from 'electron-log'
 import { NsisUpdater, autoUpdater, type UpdateInfo } from 'electron-updater'
+import {
+  resolveCnbLatestRelease,
+  type CnbLatestRelease,
+  type UpdateSourceRedirectResponse
+} from '../updateSource'
 import type {
   PlatformDownloadStatus,
   PlatformUpdateActionResult,
@@ -47,6 +53,52 @@ function toPlatformUpdateInfo(info: UpdateInfo): PlatformUpdateInfo {
   }
 }
 
+/**
+ * 使用 Electron ClientRequest 获取 CNB latest 的首次重定向地址。
+ * @param url CNB latest 入口地址。
+ * @param timeoutMs 请求超时时间，单位为毫秒。
+ * @returns 重定向状态码和目标 Release 地址。
+ * @throws 请求超时、网络失败或服务端未返回重定向时抛出错误。
+ */
+function requestCnbLatestRedirect(
+  url: string,
+  timeoutMs: number
+): Promise<UpdateSourceRedirectResponse> {
+  return new Promise((resolve, reject) => {
+    // 使用 HEAD 避免下载 Release 页面，manual 模式通过 redirect 事件暴露目标地址。
+    const request = net.request({ method: 'HEAD', url, redirect: 'manual' })
+    let settled = false
+    const timeout = setTimeout(() => {
+      if (settled) return
+      settled = true
+      request.abort()
+      reject(new Error(`请求 CNB latest 超时（${timeoutMs}ms）`))
+    }, timeoutMs)
+
+    // 捕获目标地址后立即结束请求；manual 重定向产生的取消错误会被 settled 状态忽略。
+    request.once('redirect', (status, _method, redirectUrl) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      resolve({ status, location: redirectUrl })
+      request.abort()
+    })
+    request.once('response', (response) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      reject(new Error(`CNB latest 未发生重定向: HTTP ${response.statusCode}`))
+    })
+    request.once('error', (error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      reject(error)
+    })
+    request.end()
+  })
+}
+
 export class ElectronUpdaterService {
   private state: ElectronUpdaterState = 'idle'
   private updateInfo: PlatformUpdateInfo | null = null
@@ -66,6 +118,7 @@ export class ElectronUpdaterService {
     autoUpdater.autoInstallOnAppQuit = false
     autoUpdater.autoRunAppAfterInstall = true
     autoUpdater.allowPrerelease = autoUpdater.currentVersion.prerelease.length > 0
+    autoUpdater.disableDifferentialDownload = false
 
     // 将 electron-updater 状态映射到应用现有的更新状态机。
     autoUpdater.on('checking-for-update', () => {
@@ -99,7 +152,7 @@ export class ElectronUpdaterService {
   public async checkForUpdates(downloadWhenAvailable = false): Promise<PlatformUpdateResult> {
     if (this.checkPromise) return this.checkPromise
 
-    // 合并并发检查，避免重复请求 GitHub Release 元数据。
+    // 合并并发检查，避免重复解析 CNB latest 和请求 Release 元数据。
     this.checkPromise = this.doCheckForUpdates(downloadWhenAvailable).finally(() => {
       this.checkPromise = null
     })
@@ -114,7 +167,13 @@ export class ElectronUpdaterService {
   private async doCheckForUpdates(downloadWhenAvailable: boolean): Promise<PlatformUpdateResult> {
     try {
       this.state = 'checking'
+      const latestRelease = await this.configureCnbFeed()
       const result = await autoUpdater.checkForUpdates()
+      if (result && result.updateInfo.version !== latestRelease.version) {
+        throw new Error(
+          `CNB Release tag 与更新元数据版本不一致: ${latestRelease.tag} / ${result.updateInfo.version}`
+        )
+      }
       if (!result || (this.state as ElectronUpdaterState) === 'not-available') {
         return {
           success: true,
@@ -163,7 +222,25 @@ export class ElectronUpdaterService {
   }
 
   /**
-   * 下载当前检查到的完整安装更新包。
+   * 解析 CNB 最新正式版并将 electron-updater 切换到对应的 Generic feed。
+   * @returns 当前 CNB 最新正式版信息。
+   * @throws latest 重定向无效或 CNB 网络请求失败时抛出错误。
+   */
+  private async configureCnbFeed(): Promise<CnbLatestRelease> {
+    // 使用 Electron 网络栈继承系统代理和证书配置。
+    const latestRelease = await resolveCnbLatestRelease(requestCnbLatestRedirect)
+
+    // 使用多个独立的单段 Range 请求执行差分下载，避开 CNB 不完整的多段 Range 支持。
+    autoUpdater.setFeedURL({
+      provider: 'generic',
+      url: latestRelease.downloadBaseUrl,
+      useMultipleRangeRequest: false
+    })
+    return latestRelease
+  }
+
+  /**
+   * 下载当前检查到的更新安装包，优先差分下载并在失败时回退到完整下载。
    * @param showWindowAfterDownload 下载完成后是否显示更新窗口。
    * @returns 下载操作结果。
    */

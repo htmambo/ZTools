@@ -3,12 +3,13 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import yaml from 'yaml'
 import { EXPECTED_ELECTRON_VERSION } from '../runtimeCompatibility'
+import { CNB_LATEST_RELEASE_URL } from '../updateSource'
 
 export const MAC_APP_ID = 'top.z-tools'
 export const MAC_ELECTRON_VERSION = EXPECTED_ELECTRON_VERSION
 export const MAC_UPDATER_TYPE = 'electron-updater-mac'
 export const MAC_INSTALL_INFO_FILE = 'ztools-install-info.json'
-export const MAC_RELEASE_URL = 'https://github.com/ZToolsCenter/ZTools/releases/latest'
+export const MAC_RELEASE_URL = CNB_LATEST_RELEASE_URL
 
 export interface MacInstallInfo {
   schemaVersion: number

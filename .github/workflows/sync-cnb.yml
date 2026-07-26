@@ -1,0 +1,65 @@
+name: Sync Repository to CNB
+
+# Mirror Git branches, tags, and their complete reachable history to CNB.
+on:
+  push:
+    branches: ['**']
+    tags: ['**']
+  workflow_dispatch: {}
+  workflow_call:
+    secrets:
+      CNB_SYNC_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+# Serialize mirror pushes so an older snapshot cannot overwrite a newer one.
+concurrency:
+  group: sync-cnb-repository-ZToolsCenter-ZTools
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: Mirror Git Repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CNB_SYNC_TOKEN: ${{ secrets.CNB_SYNC_TOKEN }}
+      CNB_REPO: ZToolsCenter/ZTools
+    steps:
+      - name: Validate CNB credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "$CNB_SYNC_TOKEN" ]; then
+            echo "::error::CNB_SYNC_TOKEN repository secret is not configured"
+            exit 1
+          fi
+
+      - name: Clone GitHub repository mirror
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          git clone --mirror \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            repository.git
+
+      - name: Push branches and tags to CNB
+        shell: bash
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          set -euo pipefail
+
+          # Force-prune only Git branches and tags; exclude pull-request and provider-owned refs.
+          git -C repository.git push --prune \
+            "https://cnb:${CNB_SYNC_TOKEN}@cnb.cool/${CNB_REPO}.git" \
+            "+refs/heads/*:refs/heads/*" \
+            "+refs/tags/*:refs/tags/*"
+
+          echo "Mirrored Git repository to https://cnb.cool/${CNB_REPO}"

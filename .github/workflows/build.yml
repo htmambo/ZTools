@@ -387,9 +387,15 @@ jobs:
       #       echo "✅ 所有文件已成功上传到阿里云 OSS"
       #     fi
 
+  sync-cnb-repository:
+    name: Sync Repository to CNB
+    needs: release
+    uses: ./.github/workflows/sync-cnb.yml
+    secrets: inherit
+
   sync-cnb-release:
     name: Sync Release to CNB
-    needs: release
+    needs: [release, sync-cnb-repository]
     uses: ./.github/workflows/sync-cnb-release.yml
     with:
       tag: ${{ needs.release.outputs.tag }}

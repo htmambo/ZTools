@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   MAC_APP_ID,
   MAC_ELECTRON_VERSION,
+  MAC_RELEASE_URL,
   MAC_UPDATER_TYPE,
   validateMacInstall,
   type MacInstallInfo
@@ -15,6 +16,10 @@ const validInstallInfo: MacInstallInfo = {
 }
 
 describe('validateMacInstall', () => {
+  it('uses the CNB latest Release page for complete-install migration', () => {
+    expect(MAC_RELEASE_URL).toBe('https://cnb.cool/ZToolsCenter/ZTools/-/releases/latest')
+  })
+
   it('accepts a complete signed installation with update configuration', () => {
     expect(validateMacInstall(MAC_ELECTRON_VERSION, validInstallInfo, true)).toMatchObject({
       compatible: true,

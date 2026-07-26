@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
   checkRuntimeCompatibility,
-  EXPECTED_ELECTRON_VERSION
+  EXPECTED_ELECTRON_VERSION,
+  FULL_INSTALL_RELEASE_URL
 } from '../../src/main/runtimeCompatibility'
 
 describe('checkRuntimeCompatibility', () => {
+  it('uses the CNB latest Release page for blocked runtime migration', () => {
+    expect(FULL_INSTALL_RELEASE_URL).toBe('https://cnb.cool/ZToolsCenter/ZTools/-/releases/latest')
+  })
+
   it.each(['win32', 'darwin'] as const)(
     'allows the packaged %s app on the exact target Electron version',
     (platform) => {

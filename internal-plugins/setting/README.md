@@ -24,7 +24,6 @@ ZTools 的设置中心子项目，负责承载“通用设置、快捷键、插�
 - `Data`：我的数据
 - `AllCommands`：所有指令
 - `LocalLaunch`：本地启动
-- `Sync`：WebDAV 同步
 - `Debug`：调试日志
 - `HttpService`：HTTP 服务
 - `About`：关于

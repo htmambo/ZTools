@@ -40,7 +40,7 @@ async function handleCheckUpdate(): Promise<void> {
       })
       if (shouldOpenRelease) {
         window.ztools.shellOpenExternal(
-          result.releaseUrl || 'https://github.com/ZToolsCenter/ZTools/releases/latest'
+          result.releaseUrl || 'https://cnb.cool/ZToolsCenter/ZTools/-/releases/latest'
         )
       }
       return
